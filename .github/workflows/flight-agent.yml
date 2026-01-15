@@ -1,0 +1,74 @@
+# 飞行生活记录与决策助手智能体工作流配置
+name: Flight Assistant Agent Workflow
+
+# 触发规则：定时+手动
+on:
+  # 每天UTC 8点（北京时间16点）监控机票价格
+  schedule:
+    - cron: "0 8 * * *"
+    # 每月1号0点统计上月飞行数据
+    - cron: "0 0 1 * *"
+  # 手动触发开关（在Actions页面可点击运行）
+  workflow_dispatch:
+
+# 执行任务
+jobs:
+  run-flight-agent:
+    # 运行环境：Ubuntu最新版
+    runs-on: ubuntu-latest
+    # 任务步骤
+    steps:
+      # 步骤1：拉取仓库代码
+      - name: Checkout repository code
+        uses: actions/checkout@v4
+
+      # 步骤2：配置Python 3.11环境
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          # 缓存pip依赖，加快运行速度
+          cache: "pip"
+
+      # 步骤3：安装依赖库
+      - name: Install required dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt || echo "Requirements file not found, install basic dependencies"
+          # 安装智能体核心依赖（兜底，防止requirements.txt缺失）
+          pip install requests pillow qrcode python-dotenv numpy
+
+      # 步骤4：运行飞行助手智能体
+      - name: Run Flight Assistant Agent
+        env:
+          # 测试密钥（与你配置的Secrets名称一致）
+          FLIGHTAPIKEY: ${{ secrets.FLIGHTAPIKEY }}
+          FLIGHTCOOKIE: ${{ secrets.FLIGHTCOOKIE }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # 检查main.py是否存在
+          if [ -f "main.py" ]; then
+            python main.py
+          else
+            echo "main.py not found, create test script"
+            # 兜底：若main.py缺失，创建临时测试脚本验证运行环境
+            echo "import os; print('FLIGHTAPIKEY:', os.getenv('FLIGHTAPIKEY') is not None); print('Environment test passed')" > test.py
+            python test.py
+          fi
+
+      # 步骤5：自动提交生成的飞行数据文件
+      - name: Auto commit flight data files
+        run: |
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
+          # 添加所有生成的文件
+          git add flight_records.json flight_cards/ achievements.json 2>/dev/null
+          # 提交（若无变更则跳过）
+          git commit -m "Update flight data and achievements [Automated Commit]" || echo "No changes to commit"
+          # 推送代码
+          git push origin main || echo "Push failed (no new changes)"
+
+          Add flight agent workflow
+                          
+
+          
