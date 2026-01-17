@@ -1,0 +1,243 @@
+app:
+  description: 飞行机票价格监控工作流
+  icon: 💰
+  icon_background: '#52C41A'
+  mode: workflow
+  name: 机票价格监控工作流
+  use_icon_as_answer_icon: false
+
+version: 0.1.0
+
+workflow:
+  nodes:
+    - data:
+        desc: 接收价格监控参数
+        title: 输入查询参数
+        variables:
+          - departure:
+              type: string
+              required: true
+              description: 出发城市
+          - destination:
+              type: string
+              required: true
+              description: 目的城市
+          - travel_date:
+              type: string
+              required: true
+              description: 出行日期 (YYYY-MM-DD)
+          - price_threshold:
+              type: number
+              required: false
+              description: 价格下跌阈值（可选）
+      position:
+        x: 100
+        y: 100
+      size:
+        height: 100
+        width: 200
+      type: start
+      id: start_price_monitor
+
+    - data:
+        desc: 调用价格查询API
+        title: 查询机票价格
+        code: |
+          from main import monitor_flight_price
+          
+          try:
+              result = monitor_flight_price(
+                  departure=departure,
+                  destination=destination,
+                  date=travel_date
+              )
+              
+              return {
+                  "success": True,
+                  "departure": result["departure"],
+                  "destination": result["destination"],
+                  "date": result["date"],
+                  "price": result["price"],
+                  "trend": result["trend"],
+                  "tips": result["tips"],
+                  "timestamp": result["timestamp"]
+              }
+          except Exception as e:
+              return {
+                  "success": False,
+                  "error": str(e),
+                  "message": "价格查询失败"
+              }
+      position:
+        x: 400
+        y: 100
+      size:
+        height: 100
+        width: 200
+      type: code
+      id: query_price
+
+    - data:
+        desc: 分析价格变化趋势
+        title: 趋势分析
+        code: |
+          import json
+          
+          # 分析价格趋势
+          if result["success"]:
+              price = result["price"]
+              trend = result["trend"]
+              
+              # 判断是否需要告警
+              alert_level = "normal"
+              if "下跌" in trend:
+                  alert_level = "high"
+              elif "上涨" in trend:
+                  alert_level = "warning"
+              else:
+                  alert_level = "normal"
+              
+              return {
+                  "price": price,
+                  "trend": trend,
+                  "alert_level": alert_level,
+                  "recommendation": "现在下单" if alert_level == "high" else "继续观察" if alert_level == "warning" else "持平，等待"
+              }
+          else:
+              return {
+                  "price": None,
+                  "trend": None,
+                  "alert_level": "error",
+                  "recommendation": "查询失败，请重试"
+              }
+      position:
+        x: 700
+        y: 100
+      size:
+        height: 100
+        width: 200
+      type: code
+      id: analyze_trend
+
+    - data:
+        desc: 批量查询多条路线
+        title: 批量查询
+        code: |
+          from main import monitor_flight_price
+          
+          routes = [
+              (departure, destination, travel_date)
+          ]
+          
+          results = []
+          for dep, dest, date in routes:
+              try:
+                  result = monitor_flight_price(dep, dest, date)
+                  results.append({
+                      "route": f"{dep} → {dest}",
+                      "date": date,
+                      "price": result["price"],
+                      "trend": result["trend"]
+                  })
+              except Exception as e:
+                  results.append({
+                      "route": f"{dep} → {dest}",
+                      "date": date,
+                      "error": str(e)
+                  })
+          
+          return {
+              "total_routes": len(results),
+              "results": results
+          }
+      position:
+        x: 400
+        y: 300
+      size:
+        height: 100
+        width: 200
+      type: code
+      id: batch_query
+
+    - data:
+        desc: 生成价格监控报告
+        title: 生成报告
+        code: |
+          report = {
+              "query_time": result.get("timestamp", ""),
+              "route": f"{result.get('departure', '')} → {result.get('destination', '')}",
+              "travel_date": result.get("date", ""),
+              "current_price": result.get("price", 0),
+              "price_trend": result.get("trend", "未知"),
+              "recommendation": analysis.get("recommendation", ""),
+              "alert_level": analysis.get("alert_level", ""),
+              "summary": result.get("tips", "")
+          }
+          
+          return report
+      position:
+        x: 1000
+        y: 100
+      size:
+        height: 100
+        width: 200
+      type: code
+      id: generate_report
+
+    - data:
+        desc: 输出价格监控结果
+        title: 结果输出
+        output_type: object
+      position:
+        x: 1300
+        y: 100
+      size:
+        height: 100
+        width: 200
+      type: end
+      id: end_monitor
+
+  edges:
+    - source: start_price_monitor
+      target: query_price
+    - source: start_price_monitor
+      target: batch_query
+    - source: query_price
+      target: analyze_trend
+    - source: analyze_trend
+      target: generate_report
+    - source: generate_report
+      target: end_monitor
+    - source: batch_query
+      target: end_monitor
+
+  variable_declaration:
+    - departure:
+        type: string
+        description: 出发城市
+    - destination:
+        type: string
+        description: 目的城市
+    - travel_date:
+        type: string
+        description: 出行日期
+    - price_threshold:
+        type: number
+        description: 价格下跌阈值
+
+plugins:
+  - python:
+      enabled: true
+      version: '3.8+'
+  - http:
+      enabled: true
+
+features:
+  - single_query: 单次价格查询
+  - batch_query: 批量查询
+  - price_drop_detection: 价格下跌检测
+  - report_generation: 报告生成
+  - trend_analysis: 趋势分析
+
+author: Awesome-Dify-Workflow
+description: 飞行机票价格监控工作流，支持单次/批量查询和趋势分析

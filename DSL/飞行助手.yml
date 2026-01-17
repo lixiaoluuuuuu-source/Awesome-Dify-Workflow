@@ -1,0 +1,289 @@
+app:
+  description: 飞行生活记录与决策助手 - Dify工作流集成
+  icon: ✈️
+  icon_background: '#4A90E2'
+  mode: workflow
+  name: 飞行助手工作流
+  use_icon_as_answer_icon: false
+version: 0.1.0
+
+workflow:
+  nodes:
+    - data:
+        desc: 接收用户的飞行信息输入
+        title: 输入飞行记录
+        variables:
+          - flight_number:
+              type: string
+              required: true
+              description: 航班号
+          - departure_airport:
+              type: string
+              required: true
+              description: 起飞机场代码
+          - arrival_airport:
+              type: string
+              required: true
+              description: 降落机场代码
+          - departure_time:
+              type: string
+              required: true
+              description: 起飞时间 (ISO格式)
+          - arrival_time:
+              type: string
+              required: true
+              description: 降落时间 (ISO格式)
+          - airline:
+              type: string
+              required: true
+              description: 航空公司
+          - cabin_class:
+              type: string
+              required: true
+              description: 舱位类型
+          - miles:
+              type: number
+              required: true
+              description: 飞行里程
+      position:
+        x: 100
+        y: 200
+      size:
+        height: 100
+        width: 200
+      type: start
+      id: start_input
+
+    - data:
+        desc: 调用Python函数处理飞行记录
+        title: 处理飞行记录
+        code: |
+          from flight_assistant import FlightAssistant
+          
+          assistant = FlightAssistant()
+          
+          # 添加飞行记录
+          result = assistant.add_flight_record(
+              flight_number=flight_number,
+              departure_airport=departure_airport,
+              arrival_airport=arrival_airport,
+              departure_time=departure_time,
+              arrival_time=arrival_time,
+              airline=airline,
+              cabin_class=cabin_class,
+              miles=int(miles)
+          )
+          
+          # 返回处理结果
+          return {
+              "success": result,
+              "message": "飞行记录已保存" if result else "保存失败"
+          }
+      position:
+        x: 400
+        y: 200
+      size:
+        height: 100
+        width: 200
+      type: code
+      id: process_flight_record
+
+    - data:
+        desc: 生成行程卡图片
+        title: 生成行程卡
+        code: |
+          from flight_assistant import FlightAssistant
+          
+          assistant = FlightAssistant()
+          records = assistant.get_flight_records(limit=1)
+          
+          if records:
+              card_path = assistant.generate_itinerary_card(records[0])
+              return {
+                  "success": card_path is not None,
+                  "card_path": card_path,
+                  "message": f"行程卡已生成: {card_path}" if card_path else "生成失败"
+              }
+          else:
+              return {
+                  "success": False,
+                  "message": "没有飞行记录"
+              }
+      position:
+        x: 400
+        y: 400
+      size:
+        height: 100
+        width: 200
+      type: code
+      id: generate_card
+
+    - data:
+        desc: 获取飞行数据统计
+        title: 数据统计
+        code: |
+          from flight_assistant import FlightAssistant
+          from datetime import datetime
+          
+          assistant = FlightAssistant()
+          
+          # 获取当前年份的统计
+          year = datetime.now().year
+          stats = assistant.get_flight_statistics(year=year)
+          
+          return {
+              "total_flights": stats.get("total_flights", 0),
+              "total_miles": stats.get("total_miles", 0),
+              "average_miles": stats.get("average_miles_per_flight", 0),
+              "international_flights": stats.get("international_flights", 0),
+              "top_airline": stats.get("top_airline", "N/A")
+          }
+      position:
+        x: 400
+        y: 600
+      size:
+        height: 100
+        width: 200
+      type: code
+      id: get_statistics
+
+    - data:
+        desc: 查看已解锁的成就
+        title: 成就查询
+        code: |
+          from flight_assistant import FlightAssistant
+          
+          assistant = FlightAssistant()
+          achievements = assistant.get_achievements()
+          
+          achievement_list = []
+          for achievement in achievements:
+              achievement_list.append({
+                  "name": achievement.get("name"),
+                  "description": achievement.get("description"),
+                  "unlocked_date": achievement.get("unlocked_date")
+              })
+          
+          return {
+              "total_achievements": len(achievement_list),
+              "achievements": achievement_list
+          }
+      position:
+        x: 700
+        y: 200
+      size:
+        height: 100
+        width: 200
+      type: code
+      id: get_achievements
+
+    - data:
+        desc: 监控机票价格
+        title: 价格监控
+        code: |
+          from main import monitor_flight_price
+          
+          try:
+              result = monitor_flight_price(
+                  departure=departure_city,
+                  destination=arrival_city,
+                  date=travel_date
+              )
+              return {
+                  "success": True,
+                  "price": result["price"],
+                  "trend": result["trend"],
+                  "tips": result["tips"]
+              }
+          except Exception as e:
+              return {
+                  "success": False,
+                  "error": str(e)
+              }
+      position:
+        x: 700
+        y: 400
+      size:
+        height: 100
+        width: 200
+      type: code
+      id: monitor_price
+
+    - data:
+        desc: 输出结果
+        title: 结果输出
+        output_type: object
+      position:
+        x: 1000
+        y: 300
+      size:
+        height: 100
+        width: 200
+      type: end
+      id: end_output
+
+  edges:
+    - source: start_input
+      target: process_flight_record
+    - source: process_flight_record
+      target: generate_card
+    - source: process_flight_record
+      target: get_statistics
+    - source: process_flight_record
+      target: get_achievements
+    - source: generate_card
+      target: end_output
+    - source: get_statistics
+      target: end_output
+    - source: get_achievements
+      target: end_output
+
+  variable_declaration:
+    - flight_number:
+        type: string
+        description: 航班号
+    - departure_airport:
+        type: string
+        description: 起飞机场代码
+    - arrival_airport:
+        type: string
+        description: 降落机场代码
+    - departure_time:
+        type: string
+        description: 起飞时间
+    - arrival_time:
+        type: string
+        description: 降落时间
+    - airline:
+        type: string
+        description: 航空公司
+    - cabin_class:
+        type: string
+        description: 舱位类型
+    - miles:
+        type: number
+        description: 飞行里程
+    - departure_city:
+        type: string
+        description: 出发城市
+    - arrival_city:
+        type: string
+        description: 目的城市
+    - travel_date:
+        type: string
+        description: 出行日期
+
+plugins:
+  - python:
+      enabled: true
+      version: '3.8+'
+
+features:
+  - flight_record_management: 飞行记录管理
+  - itinerary_card_generation: 行程卡生成
+  - price_monitoring: 机票价格监控
+  - data_statistics: 飞行数据统计
+  - achievement_unlocking: 成就解锁
+
+author: Awesome-Dify-Workflow
+description: 一个完整的飞行生活管理和决策助手工作流
